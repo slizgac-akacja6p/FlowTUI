@@ -67,6 +67,12 @@ Kluczowe obserwacje:
 | Perplexity | Pro | $20 | — |
 | **Total** | | **$140/mies** | Max $340 po upgradach |
 
+**Walidacja Codex Plus:** 5 tasków, 0 retries. 1 task ≈ 3 wywołania → ~7 tasków/tydz. Upgrade do Pro $200 gdy >1 projekt.
+
+**Konfiguracja domyślna:** `codex_daily_budget = 5`
+
+**Rozstrzygnięte:** CC → Max 5x, Codex → Plus, Gemini → Free. **Pozostaje:** `--auto-edit` vs `--full-auto` (test w M2).
+
 ---
 
 ## Architektura
@@ -286,6 +292,53 @@ claude "pytanie"
 codex "pytanie"
 gemini "pytanie"
 ```
+
+---
+
+## Direct Mode i Session Mode
+
+Dwa tryby bezpośredniej komunikacji z narzędziami z poziomu TUI — bez uruchamiania pipeline.
+
+### Direct mode (one-shot)
+
+```
+cc "dodaj sekcję X"
+codex "zaimplementuj Y"
+gemini "zreviewuj commit"
+```
+
+Zachowanie: streaming output → panel OUTPUT, logowanie do analytics.jsonl, inkrementacja LIMITS. Working directory = root projektu.
+
+### Session mode (interaktywna)
+
+```
+cc          → otwiera interaktywną sesję CC przez PTY w panelu OUTPUT
+gemini      → otwiera interaktywną sesję Gemini przez PTY w panelu OUTPUT
+```
+
+Codex nie ma trybu sesji (batch tool — zawsze one-shot).
+
+### Konfiguracja
+
+```toml
+[tools.claude]
+command = "claude"
+direct_flags = ["-p", "--allowedTools", "Edit,Bash,Read"]
+
+[tools.codex]
+command = "codex"
+direct_flags = ["--full-auto", "-q"]
+
+[tools.gemini]
+command = "gemini"
+direct_flags = ["-p"]
+```
+
+### Kontekst decyzji
+
+Session mode rozwiązuje problem "jeden prompt to za mało" — user może iterować z CC bezpośrednio z FlowTUI zamiast przełączać okna. Direct mode = surowy passthrough bez gwarancji jakości (brak retry, review, stress test).
+
+**Milestone: M1** (Direct: subprocess ze streamingiem; Session: PTY w panelu OUTPUT)
 
 ---
 
@@ -1148,6 +1201,51 @@ Każdy projekt ma własny `.flowtui/config.toml`, `CLAUDE.md`, `AGENTS.md`. Zero
 
 ---
 
+## Graceful Degradation
+
+Gdy narzędzie wyczerpie dzienny limit, pipeline nie stoi — obniża jakość zgodnie z fallback chain.
+
+### Fallback chain
+
+| Rola | Priorytet |
+|------|-----------|
+| stress_tester | skip (CC niedostępny → planning bez stress testu) |
+| planner | codex → gemini (CC niedostępny) |
+| implementer | claude (Codex niedostępny → CC koduje, droższe) |
+| reviewer | claude → skip (Gemini niedostępny) |
+| deep_reviewer | skip (CC niedostępny) |
+
+### Logika
+
+`is_tool_available(tool)` sprawdza `today_usage < budget` przed wywołaniem. False → next w chain. Cały chain pusty → skip, nie blokuj pipeline.
+
+Warning w task report i sprint summary:
+```
+⚠ DEGRADED MODE: <tool> limit reached → <etap>: SKIPPED
+```
+
+### Priorytety ryzyk
+
+- **Codex = 0 krytyczne** → CC przejmuje kodowanie, szybko wyczerpie CC limit
+- **CC = 0 akceptowalne** → proste taski mogą obejść się bez CC
+- **Gemini = 0 mało prawdopodobne** → 1000 req/dzień free tier
+
+### Konfiguracja
+
+W `.flowtui/config.toml`:
+```toml
+[fallback]
+stress_tester = []       # skip
+planner = ["codex", "gemini"]
+implementer = ["claude"]
+reviewer = ["claude", "skip"]
+deep_reviewer = []       # skip
+```
+
+**Milestone: M2**
+
+---
+
 ## Ryzyka
 
 | Ryzyko | P | I | Mitygacja |
@@ -1155,6 +1253,7 @@ Każdy projekt ma własny `.flowtui/config.toml`, `CLAUDE.md`, `AGENTS.md`. Zero
 | Agent w bypass mode usunie/nadpisze pliki | M | H | Git branch isolation + checkpoint + rollback |
 | ~~Codex CLI batch mode niższa jakość niż interaktywny~~ | — | — | **ZWALIDOWANE: 5/5 tasków ✅, 0 retries** |
 | Codex Plus weekly limit za mały na pipeline | H | M | 5 tasków = 24% weekly. ~7 tasków/tyg w pipeline. Upgrade do Pro gdy >1 projekt aktywny |
+| Codex Plus weekly limit za mały przy >1 projekcie aktywnym | M | H | Upgrade do Pro lub ograniczenie do 1 projektu na Plus |
 | CC Max 5x ($100) za mało limitu na planowanie | M | M | Panel LIMITS monitoruje. CC głównie planning — oszczędzaj na review |
 | CLI output format zmiana przy update | M | M | Nie parsujemy stdout — mierzymy efekty z git diff |
 | Budowanie TUI opóźnia produkty (Drop, DocFlow) | H | H | M1+M2 w 2 tygodnie albo abandon. Strict scope. |

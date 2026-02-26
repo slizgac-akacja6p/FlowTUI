@@ -1,6 +1,7 @@
 """Limit tracking — budget enforcement for API tools."""
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from .storage import AnalyticsStorage
 from pathlib import Path
@@ -49,3 +50,60 @@ class LimitTracker:
             "duration_sec": duration_sec,
         }
         self.storage.append(record)
+
+
+@dataclass
+class DegradedMode:
+    """Tracks operations skipped due to tool unavailability."""
+
+    active: bool = False
+    skipped_operations: list[dict] = field(default_factory=list)
+
+    def add_skip(self, tool: str, operation: str, reason: str) -> None:
+        """Record a skipped operation."""
+        self.skipped_operations.append({
+            "tool": tool,
+            "operation": operation,
+            "reason": reason,
+        })
+
+    def warning_message(self) -> str:
+        """Generate a warning message for all skipped operations."""
+        if not self.skipped_operations:
+            return ""
+        lines = ["⚠ DEGRADED MODE:"]
+        for op in self.skipped_operations:
+            lines.append(f"  {op['tool']} {op['operation']} skipped — {op['reason']}")
+        return "\n".join(lines)
+
+
+def select_tool_with_fallback(
+    preferred_tools: list[str],
+    tracker: LimitTracker,
+    degraded: DegradedMode,
+    operation: str,
+) -> str | None:
+    """Try tools in order, return first available or None.
+
+    Records skipped tools in degraded mode.
+
+    Args:
+        preferred_tools: List of tool names to try in order
+        tracker: LimitTracker instance for checking budgets
+        degraded: DegradedMode instance to record skips
+        operation: Description of the operation (for logging)
+
+    Returns:
+        First tool within budget, or None if all exhausted.
+
+    Example:
+        tool = select_tool_with_fallback(["codex", "cc"], tracker, degraded, "implement")
+        if tool is None:
+            # all tools exhausted
+    """
+    for tool in preferred_tools:
+        if tracker.is_within_budget(tool):
+            return tool
+        degraded.active = True
+        degraded.add_skip(tool, operation, f"{tool} limit reached")
+    return None

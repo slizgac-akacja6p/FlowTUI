@@ -8,16 +8,18 @@ from flowtui.app import FlowTUIApp
 
 @click.group(invoke_without_command=True)
 @click.option("--project", type=click.Path(exists=False), default=None, help="Path to project root")
+@click.option("--dry-run", is_flag=True, default=False, help="Preview actions without executing")
 @click.pass_context
-def main(ctx: click.Context, project: str | None) -> None:
+def main(ctx: click.Context, project: str | None, dry_run: bool) -> None:
     """FlowTUI — Terminal Development Orchestrator."""
     ctx.ensure_object(dict)
     ctx.obj["project"] = project
+    ctx.obj["dry_run"] = dry_run
 
     if ctx.invoked_subcommand is None:
         # Default: run TUI
         project_root = Path(project) if project else None
-        app = FlowTUIApp(project_root=project_root)
+        app = FlowTUIApp(project_root=project_root, dry_run=dry_run)
         app.run()
 
 

@@ -16,3 +16,8 @@ class TerminalPanel(Widget):
     def compose(self) -> ComposeResult:
         """Compose terminal panel with scrollable log."""
         yield Log(id="terminal-log")
+
+    def write_line(self, text: str) -> None:
+        """Append a line to terminal output."""
+        log_widget = self.query_one("#terminal-log", Log)
+        log_widget.write_line(text)

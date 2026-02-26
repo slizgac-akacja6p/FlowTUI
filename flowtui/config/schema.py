@@ -16,6 +16,7 @@ class ToolConfig(BaseModel):
     planning_prompt: str = ""
     coding_prompt: str = ""
     review_prompt: str = ""
+    direct_flags: list[str] = Field(default_factory=list)
 
 
 class LimitsConfig(BaseModel):

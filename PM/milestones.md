@@ -4,7 +4,7 @@
 Szkielet aplikacji: Python/Textual, `flowtui init`, parsowanie config.toml, 4 panele TUI, limit tracking, logging, startup.
 Kryterium sukcesu: `flowtui` uruchamia się z 4 panelami, `status` działa, `flowtui init` tworzy strukturę projektu.
 UI: tak. Mockup: `/Users/maciejgajda/mockups/flowtui/m1-main-idle.png`
-Status: TODO
+Status: DONE — commit 2b24183, branch feature/m1-fundament
 
 ## M2: AI Integration
 `invoke_and_measure()`, komendy plan/code/review ze streamingiem, planning pipeline v1 (1 CC call), `chat [model]` z `app.suspend()`, `docs/context/sprint.md`, graceful degradation, dry-run. Spike: weryfikacja CC `-p` file creation jako task #1.
