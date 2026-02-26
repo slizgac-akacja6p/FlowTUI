@@ -1,0 +1,101 @@
+/* FlowTUI dark terminal theme — CSS for Textual TUI */
+
+Screen {
+    layout: vertical;
+    background: $panel;
+    color: $text;
+}
+
+Header {
+    dock: top;
+    height: 1;
+    background: $boost;
+    color: $text;
+}
+
+Footer {
+    dock: bottom;
+    height: 1;
+    background: $boost;
+    color: $text;
+}
+
+#main-content {
+    layout: horizontal;
+    height: 60%;
+}
+
+#right-panel {
+    layout: vertical;
+    width: 30%;
+}
+
+#task-panel {
+    width: 70%;
+    border: heavy $success;
+    background: $panel;
+}
+
+#task-panel-title {
+    dock: top;
+    height: 1;
+    color: $success;
+    text-style: bold;
+}
+
+#task-list-placeholder {
+    color: $text-muted;
+}
+
+#limits-panel {
+    height: 50%;
+    border: heavy $success;
+    background: $panel;
+}
+
+#limits-title {
+    dock: top;
+    height: 1;
+    color: $success;
+    text-style: bold;
+}
+
+#limits-counter {
+    color: $text;
+}
+
+#sprint-panel {
+    height: 50%;
+    border: heavy $success;
+    background: $panel;
+}
+
+#sprint-title {
+    dock: top;
+    height: 1;
+    color: $success;
+    text-style: bold;
+}
+
+#sprint-summary {
+    color: $text-muted;
+}
+
+#terminal-panel {
+    height: 30%;
+    border: heavy $success;
+    background: $panel;
+}
+
+#terminal-log {
+    color: $text;
+    background: $panel;
+}
+
+#cmd-input {
+    dock: bottom;
+    height: 1;
+    border: heavy $accent;
+    background: $panel;
+    color: $text;
+}

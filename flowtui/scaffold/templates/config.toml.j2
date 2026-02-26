@@ -1,0 +1,16 @@
+# FlowTUI Configuration
+
+[project]
+name = "{{ project_name }}"
+stack = "{{ project_stack }}"
+description = "A FlowTUI project"
+
+[limits]
+claude_daily_budget = 15
+codex_daily_budget = 5
+gemini_daily_budget = 30
+
+[startup]
+auto_update = true
+update_timeout = 60
+skip_if_recent = 3600
