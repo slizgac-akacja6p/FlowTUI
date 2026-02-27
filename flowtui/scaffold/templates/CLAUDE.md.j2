@@ -1,0 +1,28 @@
+# {{ project_name }}
+
+{{ stack }} project managed with FlowTUI.
+
+## Project Structure
+
+```
+.flowtui/
+  config.toml        # Configuration
+  routing.toml       # Routing rules
+  analytics.jsonl    # Analytics log
+  versions.jsonl     # Version history
+PM/
+  tasks/             # Task files (TASK-*.md)
+  milestones.md      # Milestone definitions
+docs/
+  context/           # Sprint context
+  plans/             # Plan documents
+  test-scenarios/    # Test scenarios
+```
+
+## Getting Started
+
+```bash
+flowtui              # Start TUI
+flowtui status       # Show sprint status
+flowtui init         # Initialize project
+```
