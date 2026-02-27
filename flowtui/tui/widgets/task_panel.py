@@ -94,12 +94,16 @@ class TaskPanel(Widget):
         yield Static("No tasks loaded", id="task-list-placeholder")
 
     def on_mount(self) -> None:
-        """Start watchdog observer when widget mounts.
+        """Start watchdog observer and load initial tasks when widget mounts.
 
         If no tasks_directory provided, observer is skipped.
         """
+        # Early exit if no directory configured
         if self._tasks_directory is None or not self._tasks_directory.exists():
             return
+
+        # Load initial tasks on mount
+        self.refresh_tasks()
 
         # Create observer and file handler
         self._observer = Observer()
@@ -139,7 +143,12 @@ class TaskPanel(Widget):
         Loads all TASK-*.md files from tasks directory and renders a table
         with ID, Status, Priority, and Title columns.
         """
-        task_list = self.query_one("#task-list-placeholder", Static)
+        # Early guard: if widget not mounted yet (unit tests), skip
+        try:
+            task_list = self.query_one("#task-list-placeholder", Static)
+        except Exception:
+            # Widget not available (e.g. during unit tests without full app context)
+            return
 
         # Skip if no tasks directory configured
         if self._tasks_directory is None or not self._tasks_directory.exists():

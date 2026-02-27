@@ -94,8 +94,33 @@ Footer {
 
 #cmd-input {
     dock: bottom;
-    height: 1;
-    border: heavy $accent;
-    background: $panel;
+    /* height: 3 makes the border and text legible — height: 1 clips the border */
+    height: 3;
+    border: tall $accent;
+    background: $surface;
     color: $text;
+}
+
+CommandPickerScreen {
+    align: center middle;
+}
+
+#picker-container {
+    width: 60;
+    height: auto;
+    max-height: 20;
+    border: thick $accent;
+    background: $surface;
+    padding: 1 2;
+}
+
+#picker-title {
+    text-align: center;
+    color: $text-muted;
+    margin-bottom: 1;
+}
+
+#picker-list {
+    height: auto;
+    max-height: 15;
 }
