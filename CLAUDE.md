@@ -76,5 +76,5 @@ stats / stats --export csv|json   # dashboard zużycia + retry rate
 ```
 
 ## GitHub
-Repozytorium: do uzupełnienia po stworzeniu
+Repozytorium: https://github.com/slizgac-akacja6p/FlowTUI
 Branch strategy: main ← test ← develop ← feature/m{N}-opis
