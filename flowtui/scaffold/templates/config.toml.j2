@@ -1,0 +1,28 @@
+# FlowTUI Configuration
+
+[project]
+name = "{{ project_name }}"
+stack = "{{ project_stack }}"
+description = "A FlowTUI project"
+
+[limits]
+cc = 50
+codex = 5
+gemini = 30
+
+[startup]
+auto_update = true
+update_timeout = 60
+skip_if_recent = 3600
+
+[tools.claude]
+command = "claude"
+direct_flags = ["-p", "--allowedTools", "Edit,Bash,Read"]
+
+[tools.codex]
+command = "codex"
+direct_flags = ["--full-auto", "-q"]
+
+[tools.gemini]
+command = "gemini"
+direct_flags = ["-p"]
