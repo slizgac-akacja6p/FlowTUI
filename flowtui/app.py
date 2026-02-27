@@ -70,13 +70,14 @@ class FlowTUIApp(App):
             self._project_name = self.project_root.name
             self._stack = "unknown"
 
-    async def action_command_picker(self) -> None:
+    def action_command_picker(self) -> None:
         """Open command picker modal and populate input with selected command."""
-        result = await self.push_screen_wait(CommandPickerScreen())
-        if result is not None:
-            cmd_input = self.query_one("#cmd-input", Input)
-            cmd_input.value = result
-            cmd_input.focus()
+        def on_dismiss(result) -> None:
+            if result is not None:
+                cmd_input = self.query_one("#cmd-input", Input)
+                cmd_input.value = result
+                cmd_input.focus()
+        self.push_screen(CommandPickerScreen(), callback=on_dismiss)
 
     def compose(self) -> ComposeResult:
         """Compose main layout with header, panels, and footer."""
