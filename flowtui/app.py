@@ -4,10 +4,12 @@ import os
 from pathlib import Path
 
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Header, Footer, Input
 
 from flowtui.analytics.stats import StatsCalculator
+from flowtui.tui.screens import CommandPickerScreen
 from flowtui.tui.widgets import (
     TaskPanel,
     LimitsPanel,
@@ -29,6 +31,10 @@ class FlowTUIApp(App):
     """
 
     CSS_PATH = Path(__file__).parent / "tui/styles.tcss"
+
+    BINDINGS = [
+        Binding("f1", "command_picker", "Commands"),
+    ]
 
     DIRECT_TOOLS = {
         "cc": {"command": "claude", "flags": ["-p", "--allowedTools", "Edit,Bash,Read"]},
@@ -64,6 +70,14 @@ class FlowTUIApp(App):
             self._project_name = self.project_root.name
             self._stack = "unknown"
 
+    async def action_command_picker(self) -> None:
+        """Open command picker modal and populate input with selected command."""
+        result = await self.push_screen_wait(CommandPickerScreen())
+        if result is not None:
+            cmd_input = self.query_one("#cmd-input", Input)
+            cmd_input.value = result
+            cmd_input.focus()
+
     def compose(self) -> ComposeResult:
         """Compose main layout with header, panels, and footer."""
         yield Header()
@@ -78,7 +92,7 @@ class FlowTUIApp(App):
                 yield SprintPanel(id="sprint-panel")
 
         yield TerminalPanel(id="terminal-panel")
-        yield Input(placeholder="Command...", id="cmd-input")
+        yield Input(placeholder="▶ Command (F1=help)...", id="cmd-input")
 
         yield Footer()
 
