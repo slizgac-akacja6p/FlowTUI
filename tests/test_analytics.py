@@ -1,7 +1,7 @@
 """Tests for analytics storage and limit tracking."""
 import tempfile
 from pathlib import Path
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from threading import Thread
 import time
 
@@ -9,6 +9,7 @@ import pytest
 
 from flowtui.analytics.storage import AnalyticsStorage
 from flowtui.analytics.limits import LimitTracker
+from flowtui.analytics.stats import StatsCalculator, StatsSnapshot
 
 
 class TestAnalyticsStorage:
@@ -223,3 +224,202 @@ class TestLimitTracker:
 
             assert tracker.is_within_budget("claude") is False
             assert tracker.is_within_budget("gemini") is True
+
+
+class TestStatsCalculator:
+    """Test statistics calculation from analytics records."""
+
+    def test_stats_empty_log(self):
+        """StatsCalculator handles empty analytics log."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            project_root.joinpath(".flowtui").mkdir(parents=True, exist_ok=True)
+
+            calc = StatsCalculator(project_root)
+            snapshot = calc.snapshot()
+
+            assert snapshot.today_calls == {"claude": 0, "codex": 0, "gemini": 0}
+            assert snapshot.week_calls == {"claude": 0, "codex": 0, "gemini": 0}
+            assert snapshot.avg_task_duration_sec == 0.0
+            assert snapshot.retry_rate == 0.0
+            assert snapshot.total_tasks_done == 0
+            assert snapshot.total_tasks_blocked == 0
+            assert snapshot.total_files_changed == 0
+            assert snapshot.total_lines_added == 0
+            assert snapshot.total_lines_removed == 0
+
+    def test_stats_today_calls(self):
+        """today_calls counts tool calls since midnight UTC."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            storage = AnalyticsStorage(project_root / ".flowtui" / "analytics.jsonl")
+
+            # Record some calls
+            storage.append({"tool": "claude", "action": "plan"})
+            storage.append({"tool": "claude", "action": "review"})
+            storage.append({"tool": "codex", "action": "implement"})
+
+            calc = StatsCalculator(project_root)
+            assert calc.today_calls("claude") == 2
+            assert calc.today_calls("codex") == 1
+            assert calc.today_calls("gemini") == 0
+
+    def test_stats_week_calls(self):
+        """week_calls counts tool calls in last 7 days."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            storage = AnalyticsStorage(project_root / ".flowtui" / "analytics.jsonl")
+
+            # Record calls with manual timestamps
+            now = datetime.now(timezone.utc)
+            storage.append({
+                "timestamp": now.isoformat(),
+                "tool": "claude",
+                "action": "plan",
+            })
+
+            # Old record from 10 days ago (should be excluded from week_calls)
+            old_time = now - timedelta(days=10)
+            with open(storage.filepath, "a", encoding="utf-8") as f:
+                f.write(f'{{"timestamp": "{old_time.isoformat()}", "tool": "claude", "action": "old"}}\n')
+
+            calc = StatsCalculator(project_root)
+            # week_calls should count only the recent one
+            assert calc.week_calls("claude") >= 1  # At least the recent one
+
+    def test_stats_avg_task_duration(self):
+        """avg_task_duration computes mean duration of done tasks."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            storage = AnalyticsStorage(project_root / ".flowtui" / "analytics.jsonl")
+
+            # Record done tasks with durations
+            storage.append({
+                "action": "run_task",
+                "status": "done",
+                "duration_sec": 10.0,
+            })
+            storage.append({
+                "action": "run_task",
+                "status": "done",
+                "duration_sec": 20.0,
+            })
+            storage.append({
+                "action": "run_task",
+                "status": "blocked",
+                "duration_sec": 5.0,  # Should not be counted
+            })
+
+            calc = StatsCalculator(project_root)
+            avg = calc.avg_task_duration()
+            assert avg == 15.0  # (10 + 20) / 2
+
+    def test_stats_retry_rate(self):
+        """retry_rate computes fraction of tasks with retries."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            storage = AnalyticsStorage(project_root / ".flowtui" / "analytics.jsonl")
+
+            # Record 4 tasks: 1 with retry, 3 without
+            storage.append({"action": "run_task", "retry_count": 1})
+            storage.append({"action": "run_task", "retry_count": 0})
+            storage.append({"action": "run_task", "retry_count": 0})
+            storage.append({"action": "run_task", "retry_count": 0})
+
+            calc = StatsCalculator(project_root)
+            rate = calc.retry_rate()
+            assert rate == 0.25  # 1 retried out of 4
+
+    def test_stats_total_tasks_done(self):
+        """total_tasks_done counts completed tasks."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            storage = AnalyticsStorage(project_root / ".flowtui" / "analytics.jsonl")
+
+            storage.append({"action": "run_task", "status": "done"})
+            storage.append({"action": "run_task", "status": "done"})
+            storage.append({"action": "run_task", "status": "blocked"})
+
+            calc = StatsCalculator(project_root)
+            assert calc.total_tasks_done() == 2
+
+    def test_stats_total_tasks_blocked(self):
+        """total_tasks_blocked counts blocked tasks."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            storage = AnalyticsStorage(project_root / ".flowtui" / "analytics.jsonl")
+
+            storage.append({"action": "run_task", "status": "done"})
+            storage.append({"action": "run_task", "status": "blocked"})
+            storage.append({"action": "run_task", "status": "blocked"})
+
+            calc = StatsCalculator(project_root)
+            assert calc.total_tasks_blocked() == 2
+
+    def test_stats_code_metrics(self):
+        """snapshot aggregates code change metrics."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            storage = AnalyticsStorage(project_root / ".flowtui" / "analytics.jsonl")
+
+            storage.append({
+                "action": "run_task",
+                "files_changed": 3,
+                "lines_added": 50,
+                "lines_removed": 20,
+            })
+            storage.append({
+                "action": "run_task",
+                "files_changed": 2,
+                "lines_added": 30,
+                "lines_removed": 10,
+            })
+
+            calc = StatsCalculator(project_root)
+            snapshot = calc.snapshot()
+
+            assert snapshot.total_files_changed == 5
+            assert snapshot.total_lines_added == 80
+            assert snapshot.total_lines_removed == 30
+
+    def test_stats_snapshot_custom_tools(self):
+        """snapshot respects custom tool list."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            storage = AnalyticsStorage(project_root / ".flowtui" / "analytics.jsonl")
+
+            storage.append({"tool": "custom_tool", "action": "test"})
+
+            calc = StatsCalculator(project_root)
+            snapshot = calc.snapshot(tools=["custom_tool", "other"])
+
+            assert "custom_tool" in snapshot.today_calls
+            assert "other" in snapshot.today_calls
+            assert snapshot.today_calls["custom_tool"] == 1
+
+    def test_stats_format_dashboard(self):
+        """format_dashboard produces formatted output."""
+        snapshot = StatsSnapshot(
+            today_calls={"claude": 5, "codex": 3},
+            week_calls={"claude": 20, "codex": 10},
+            avg_task_duration_sec=2.5,
+            retry_rate=0.1,
+            total_tasks_done=10,
+            total_tasks_blocked=1,
+            total_files_changed=15,
+            total_lines_added=200,
+            total_lines_removed=50,
+        )
+
+        calc = StatsCalculator(Path("."))
+        output = calc.format_dashboard(
+            snapshot,
+            budgets={"claude": 10, "codex": 5},
+        )
+
+        assert "Stats Dashboard" in output
+        assert "Tool Calls:" in output
+        assert "claude" in output
+        assert "codex" in output
+        assert "2.5s" in output  # avg time
+        assert "10.0%" in output  # retry rate

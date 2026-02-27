@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from pathlib import Path
 from filelock import FileLock
 
@@ -19,10 +19,10 @@ class AnalyticsStorage:
     def append(self, record: dict) -> None:
         """Append a record to the log (thread-safe via filelock).
 
-        Automatically adds timestamp in ISO8601 format if not present.
+        Automatically adds timestamp in ISO8601 format (UTC) if not present.
         """
         if "timestamp" not in record:
-            record["timestamp"] = datetime.now().isoformat()
+            record["timestamp"] = datetime.now(timezone.utc).isoformat()
 
         with FileLock(str(self.lock_path), timeout=10):
             with open(self.filepath, "a", encoding="utf-8") as f:

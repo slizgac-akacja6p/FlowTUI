@@ -7,6 +7,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Header, Footer, Input
 
+from flowtui.analytics.stats import StatsCalculator
 from flowtui.tui.widgets import (
     TaskPanel,
     LimitsPanel,
@@ -122,10 +123,12 @@ class FlowTUIApp(App):
         elif cmd == "chat" and (not prompt or prompt in ("claude", "cc")):
             await self._session_invoke("cc")
         # ─────────────────────────────────────────────────────────────────────
-        # Status command
+        # Status and stats commands
         # ─────────────────────────────────────────────────────────────────────
         elif cmd == "status":
             asyncio.create_task(self._show_status())
+        elif cmd == "stats":
+            asyncio.create_task(self._show_stats())
         # ─────────────────────────────────────────────────────────────────────
         # Task execution commands: run, merge
         # ─────────────────────────────────────────────────────────────────────
@@ -344,6 +347,38 @@ class FlowTUIApp(App):
         except Exception as e:
             terminal.write_line(f"[ERROR] {e}")
 
+    async def _show_stats(self) -> None:
+        """Display stats dashboard with tool usage and task metrics."""
+        terminal = self.query_one("#terminal-panel", TerminalPanel)
+
+        try:
+            from flowtui.config.loader import load_config
+
+            calc = StatsCalculator(self.project_root)
+
+            # Build budgets dict from config if available, use defaults as fallback
+            budgets = {"claude": 50, "codex": 5, "gemini": 100}
+            try:
+                config = load_config(self.project_root)
+                if hasattr(config, "limits"):
+                    limits = config.limits
+                    # Update budgets from config limits if they exist
+                    for tool in ["claude", "codex", "gemini"]:
+                        attr_name = f"{tool}_daily"
+                        if hasattr(limits, attr_name):
+                            budgets[tool] = getattr(limits, attr_name)
+            except Exception as e:
+                # Config format changed or missing — log warning but continue with defaults
+                terminal.write_line(f"[WARN] Could not load budgets from config: {e} — using defaults")
+
+            # Compute snapshot and format dashboard
+            snapshot = calc.snapshot()
+            dashboard = calc.format_dashboard(snapshot, budgets)
+            terminal.write_line(dashboard)
+
+        except Exception as e:
+            terminal.write_line(f"[ERROR] Stats error: {e}")
+
     async def _run_task(self, task_id: str) -> None:
         """Run a single task via Orchestrator (implementation + review + verify AC).
 
@@ -552,7 +587,7 @@ class FlowTUIApp(App):
         try:
             data_dir = self.project_root / ".flowtui"
             if data_dir.exists():
-                storage = AnalyticsStorage(data_dir)
+                storage = AnalyticsStorage(data_dir / "analytics.jsonl")
                 storage.append({
                     "tool": tool_key,
                     "action": "direct",
@@ -632,7 +667,7 @@ class FlowTUIApp(App):
         try:
             data_dir = self.project_root / ".flowtui"
             if data_dir.exists():
-                storage = AnalyticsStorage(data_dir)
+                storage = AnalyticsStorage(data_dir / "analytics.jsonl")
                 storage.append({
                     "tool": tool_key,
                     "action": "session",
