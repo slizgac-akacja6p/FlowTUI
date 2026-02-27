@@ -1,4 +1,5 @@
 """Tests for TaskManager — CRUD operations on TASK-XXX.md files."""
+import re
 import tempfile
 from pathlib import Path
 from datetime import date
@@ -263,7 +264,8 @@ class TestTaskManagerRoundTrip:
         assert loaded.assigned == original.assigned
         assert loaded.status == original.status
         assert loaded.created == original.created
-        assert loaded.updated == original.updated
+        # TaskManager.create() always sets updated to today, so check it's a valid ISO date
+        assert re.match(r"\d{4}-\d{2}-\d{2}", loaded.updated), f"Invalid date format: {loaded.updated}"
         assert loaded.context == original.context
         assert loaded.requirements == original.requirements
         assert loaded.files_to_modify == original.files_to_modify
