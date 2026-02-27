@@ -68,7 +68,9 @@ class FlowTUIApp(App):
         yield Header()
 
         with Horizontal(id="main-content"):
-            yield TaskPanel(id="task-panel")
+            # Pass tasks directory to TaskPanel for file watching
+            tasks_dir = self.project_root / "docs" / "tasks"
+            yield TaskPanel(id="task-panel", tasks_directory=tasks_dir)
 
             with Vertical(id="right-panel"):
                 yield LimitsPanel(id="limits-panel")
@@ -124,6 +126,20 @@ class FlowTUIApp(App):
         # ─────────────────────────────────────────────────────────────────────
         elif cmd == "status":
             asyncio.create_task(self._show_status())
+        # ─────────────────────────────────────────────────────────────────────
+        # Task execution commands: run, merge
+        # ─────────────────────────────────────────────────────────────────────
+        elif cmd == "run":
+            if not prompt:
+                terminal.write_line("Usage: run TASK-XXX | run sprint")
+            elif prompt.lower() == "sprint":
+                asyncio.create_task(self._run_sprint())
+            else:
+                task_id = prompt.upper()
+                asyncio.create_task(self._run_task(task_id))
+        elif cmd == "merge":
+            task_id = prompt.upper() if prompt else None
+            asyncio.create_task(self._merge(task_id))
         # ─────────────────────────────────────────────────────────────────────
         # Direct and session mode for tools
         # ─────────────────────────────────────────────────────────────────────
@@ -328,6 +344,148 @@ class FlowTUIApp(App):
         except Exception as e:
             terminal.write_line(f"[ERROR] {e}")
 
+    async def _run_task(self, task_id: str) -> None:
+        """Run a single task via Orchestrator (implementation + review + verify AC).
+
+        Args:
+            task_id: Task identifier (e.g., "TASK-001").
+        """
+        terminal = self.query_one("#terminal-panel", TerminalPanel)
+        terminal.write_line(f"Running task {task_id}...")
+
+        if self.dry_run:
+            terminal.write_line("--- DRY RUN (no execution) ---")
+            terminal.write_line(f"Would run task: {task_id}")
+            terminal.write_line("--- END DRY RUN ---")
+            return
+
+        try:
+            from flowtui.config.loader import load_config
+            from flowtui.core.invoker import SubprocessInvoker
+            from flowtui.core.task_manager import TaskManager
+            from flowtui.core.git_ops import GitOps
+            from flowtui.core.test_runner import TestRunner
+            from flowtui.core.engine import Orchestrator
+
+            config = load_config(self.project_root)
+            tasks_dir = self.project_root / "docs" / "tasks"
+            task_mgr = TaskManager(tasks_dir)
+            invoker = SubprocessInvoker()
+
+            # Initialize GitOps and TestRunner
+            git_ops = GitOps(self.project_root) if self.project_root else None
+            test_runner = TestRunner(self.project_root) if self.project_root else None
+
+            orchestrator = Orchestrator(
+                invoker, task_mgr, config, self.project_root,
+                git_ops=git_ops, test_runner=test_runner
+            )
+
+            result = await orchestrator.run_task(task_id)
+            terminal.write_line(result.report_table())
+
+        except Exception as e:
+            terminal.write_line(f"[ERROR] Running task {task_id} failed: {e}")
+
+    async def _run_sprint(self) -> None:
+        """Run all TODO tasks sequentially via Orchestrator with circuit breaker.
+
+        Processes tasks in priority order and stops after 3 consecutive failures.
+        """
+        terminal = self.query_one("#terminal-panel", TerminalPanel)
+        terminal.write_line("Starting sprint run...")
+
+        if self.dry_run:
+            terminal.write_line("--- DRY RUN (no execution) ---")
+            terminal.write_line("Would run all TODO tasks")
+            terminal.write_line("--- END DRY RUN ---")
+            return
+
+        try:
+            from flowtui.config.loader import load_config
+            from flowtui.core.invoker import SubprocessInvoker
+            from flowtui.core.task_manager import TaskManager
+            from flowtui.core.git_ops import GitOps
+            from flowtui.core.test_runner import TestRunner
+            from flowtui.core.engine import Orchestrator
+
+            config = load_config(self.project_root)
+            tasks_dir = self.project_root / "docs" / "tasks"
+            task_mgr = TaskManager(tasks_dir)
+            invoker = SubprocessInvoker()
+
+            # Initialize GitOps and TestRunner
+            git_ops = GitOps(self.project_root) if self.project_root else None
+            test_runner = TestRunner(self.project_root) if self.project_root else None
+
+            orchestrator = Orchestrator(
+                invoker, task_mgr, config, self.project_root,
+                git_ops=git_ops, test_runner=test_runner
+            )
+
+            result = await orchestrator.run_sprint()
+            terminal.write_line(result.summary_table())
+
+        except Exception as e:
+            terminal.write_line(f"[ERROR] Sprint run failed: {e}")
+
+    async def _merge(self, task_id: str | None = None) -> None:
+        """Merge done task branch(es) to develop branch.
+
+        If task_id is provided: merge that specific task's branch.
+        If task_id is None: merge all DONE tasks' branches.
+
+        Args:
+            task_id: Optional task ID to merge. If None, merges all DONE tasks.
+        """
+        terminal = self.query_one("#terminal-panel", TerminalPanel)
+        desc = task_id or "all done tasks"
+        terminal.write_line(f"Merging {desc}...")
+
+        if self.dry_run:
+            terminal.write_line("--- DRY RUN (no execution) ---")
+            terminal.write_line(f"Would merge: {desc}")
+            terminal.write_line("--- END DRY RUN ---")
+            return
+
+        try:
+            from flowtui.config.loader import load_config
+            from flowtui.core.invoker import SubprocessInvoker
+            from flowtui.core.task_manager import TaskManager
+            from flowtui.core.git_ops import GitOps
+            from flowtui.core.test_runner import TestRunner
+            from flowtui.core.engine import Orchestrator
+
+            config = load_config(self.project_root)
+            tasks_dir = self.project_root / "docs" / "tasks"
+            task_mgr = TaskManager(tasks_dir)
+            invoker = SubprocessInvoker()
+
+            # Initialize GitOps and TestRunner
+            git_ops = GitOps(self.project_root) if self.project_root else None
+            test_runner = TestRunner(self.project_root) if self.project_root else None
+
+            orchestrator = Orchestrator(
+                invoker, task_mgr, config, self.project_root,
+                git_ops=git_ops, test_runner=test_runner
+            )
+
+            result = await orchestrator.merge(task_id)
+
+            # Handle both single and multiple merge results
+            if isinstance(result, list):
+                for merge_result in result:
+                    status = "OK" if merge_result.success else f"CONFLICT: {merge_result.message}"
+                    terminal.write_line(f"  {status}")
+            else:
+                status = "OK" if result.success else f"CONFLICT: {result.message}"
+                terminal.write_line(f"merge {task_id or 'done tasks'}: {status}")
+
+        except (RuntimeError, ValueError) as e:
+            terminal.write_line(f"[ERROR] Merge failed: {e}")
+        except Exception as e:
+            terminal.write_line(f"[ERROR] Unexpected error during merge: {e}")
+
     async def _direct_invoke(self, tool_key: str, prompt: str) -> None:
         """Run a direct passthrough subprocess call.
 
@@ -460,7 +618,8 @@ class FlowTUIApp(App):
         # Suspend TUI and run interactive session in full terminal
         with self.suspend():
             try:
-                subprocess.run(cmd, cwd=self.project_root)
+                env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+                subprocess.run(cmd, cwd=self.project_root, env=env)
             except FileNotFoundError:
                 pass  # can't display error while suspended, logged after resume
             except Exception:
