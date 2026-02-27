@@ -36,7 +36,7 @@ class TaskFileHandler(FileSystemEventHandler):
         self._app = app_ref
         self._debounce_sec = debounce_sec
         self._timer = None
-        self._stopped = False
+        self._stopped = threading.Event()
 
     def on_any_event(self, event):
         """Handle any filesystem event with debouncing.
@@ -48,7 +48,7 @@ class TaskFileHandler(FileSystemEventHandler):
             event: FileSystemEvent from watchdog.
         """
         # Exit early if handler has been stopped (widget unmounted)
-        if self._stopped:
+        if self._stopped.is_set():
             return
 
         # Cancel existing timer if present
@@ -119,7 +119,7 @@ class TaskPanel(Widget):
         """Stop watchdog observer when widget unmounts."""
         # Mark handler as stopped BEFORE stopping observer
         if self._file_handler is not None:
-            self._file_handler._stopped = True
+            self._file_handler._stopped.set()
         if self._observer is not None:
             self._observer.stop()
             self._observer.join(timeout=2.0)
@@ -134,10 +134,35 @@ class TaskPanel(Widget):
         self.refresh_tasks()
 
     def refresh_tasks(self) -> None:
-        """Reload task list from disk.
+        """Reload task list from disk and display as table.
 
-        M1 scope: placeholder implementation (full load in M2).
+        Loads all TASK-*.md files from tasks directory and renders a table
+        with ID, Status, Priority, and Title columns.
         """
-        # Placeholder: M2 will implement actual task loading
         task_list = self.query_one("#task-list-placeholder", Static)
-        task_list.update("Tasks refreshed (M2: add task loading)")
+
+        # Skip if no tasks directory configured
+        if self._tasks_directory is None or not self._tasks_directory.exists():
+            task_list.update("Tasks refreshed: no tasks found in docs/tasks/")
+            return
+
+        try:
+            from flowtui.core.task_manager import TaskManager
+
+            task_mgr = TaskManager(self._tasks_directory)
+            tasks = task_mgr.load_all()
+
+            if not tasks:
+                task_list.update("Tasks refreshed: no tasks found in docs/tasks/")
+                return
+
+            # Build table: ID | Status | Priority | Title
+            lines = ["ID | Status | Priority | Title"]
+            lines.append("-" * 60)
+            for task in tasks:
+                lines.append(f"{task.id} | {task.status:11} | {task.priority:8} | {task.title}")
+
+            task_list.update("Tasks refreshed:\n" + "\n".join(lines))
+
+        except Exception as e:
+            task_list.update(f"Tasks refreshed with error: {e}")
