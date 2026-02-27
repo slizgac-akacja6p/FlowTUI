@@ -128,7 +128,13 @@ class FlowTUIApp(App):
         elif cmd == "status":
             asyncio.create_task(self._show_status())
         elif cmd == "stats":
-            asyncio.create_task(self._show_stats())
+            export_fmt = None
+            args_list = raw.split()
+            if "--export" in args_list:
+                idx = args_list.index("--export")
+                if idx + 1 < len(args_list):
+                    export_fmt = args_list[idx + 1].lower()  # "csv" or "json"
+            asyncio.create_task(self._show_stats(export_fmt=export_fmt))
         # ─────────────────────────────────────────────────────────────────────
         # Task execution commands: run, merge
         # ─────────────────────────────────────────────────────────────────────
@@ -347,8 +353,12 @@ class FlowTUIApp(App):
         except Exception as e:
             terminal.write_line(f"[ERROR] {e}")
 
-    async def _show_stats(self) -> None:
-        """Display stats dashboard with tool usage and task metrics."""
+    async def _show_stats(self, export_fmt: str | None = None) -> None:
+        """Display stats dashboard with tool usage and task metrics.
+
+        Args:
+            export_fmt: Optional export format ("csv" or "json"). If None, displays dashboard.
+        """
         terminal = self.query_one("#terminal-panel", TerminalPanel)
 
         try:
@@ -356,25 +366,32 @@ class FlowTUIApp(App):
 
             calc = StatsCalculator(self.project_root)
 
-            # Build budgets dict from config if available, use defaults as fallback
-            budgets = {"claude": 50, "codex": 5, "gemini": 100}
-            try:
-                config = load_config(self.project_root)
-                if hasattr(config, "limits"):
-                    limits = config.limits
-                    # Update budgets from config limits if they exist
-                    for tool in ["claude", "codex", "gemini"]:
-                        attr_name = f"{tool}_daily"
-                        if hasattr(limits, attr_name):
-                            budgets[tool] = getattr(limits, attr_name)
-            except Exception as e:
-                # Config format changed or missing — log warning but continue with defaults
-                terminal.write_line(f"[WARN] Could not load budgets from config: {e} — using defaults")
+            if export_fmt == "csv":
+                path = calc.export_csv()
+                terminal.write_line(f"Exported to: {path}")
+            elif export_fmt == "json":
+                path = calc.export_json()
+                terminal.write_line(f"Exported to: {path}")
+            else:
+                # Build budgets dict from config if available, use defaults as fallback
+                budgets = {"claude": 50, "codex": 5, "gemini": 100}
+                try:
+                    config = load_config(self.project_root)
+                    if hasattr(config, "limits"):
+                        limits = config.limits
+                        # Update budgets from config limits if they exist
+                        for tool in ["claude", "codex", "gemini"]:
+                            attr_name = f"{tool}_daily"
+                            if hasattr(limits, attr_name):
+                                budgets[tool] = getattr(limits, attr_name)
+                except Exception as e:
+                    # Config format changed or missing — log warning but continue with defaults
+                    terminal.write_line(f"[WARN] Could not load budgets from config: {e} — using defaults")
 
-            # Compute snapshot and format dashboard
-            snapshot = calc.snapshot()
-            dashboard = calc.format_dashboard(snapshot, budgets)
-            terminal.write_line(dashboard)
+                # Compute snapshot and format dashboard
+                snapshot = calc.snapshot()
+                dashboard = calc.format_dashboard(snapshot, budgets)
+                terminal.write_line(dashboard)
 
         except Exception as e:
             terminal.write_line(f"[ERROR] Stats error: {e}")

@@ -139,6 +139,7 @@ class SubprocessInvoker:
         except FileNotFoundError:
             raise RuntimeError(f"Tool not found: {tool} (command: {cmd[0]})") from None
 
+        _streaming_done = False
         try:
             while True:
                 # Heartbeat: wait for next line with timeout
@@ -172,19 +173,22 @@ class SubprocessInvoker:
 
                 yield line.decode("utf-8", errors="replace")
 
+            _streaming_done = True
             # Wait for process to finish
             await asyncio.wait_for(proc.wait(), timeout=5.0)
         except asyncio.TimeoutError:
-            # proc.wait() timed out after the loop ended — kill and re-raise so
-            # callers can distinguish a timeout from a normal completion
-            proc.kill()
-            try:
-                await asyncio.wait_for(proc.wait(), timeout=5.0)
-            except asyncio.TimeoutError:
-                pass
-            raise TimeoutError(
-                f"Tool {tool!r} streaming timed out after {timeout}s"
-            )
+            # Timeout during streaming vs cleanup depends on _streaming_done flag
+            if not _streaming_done:
+                # Timeout during readline (shouldn't happen here, but guard)
+                proc.kill()
+                raise TimeoutError("Streaming timed out during output collection")
+            else:
+                # Timeout waiting for proc cleanup after EOF — just kill it
+                proc.kill()
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    pass
 
 
 class MockCLI:
@@ -245,6 +249,8 @@ class MockCLI:
         lines = output.split("\n") if output else []
 
         for line in lines:
+            if not line:  # skip empty lines
+                continue
             if self.delay > 0:
                 await asyncio.sleep(self.delay)
-            yield line + "\n" if line else ""
+            yield line + "\n"

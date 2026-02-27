@@ -1,6 +1,8 @@
 """Statistics calculation from analytics.jsonl log."""
 from __future__ import annotations
 
+import csv
+import json as json_module
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -232,3 +234,99 @@ class StatsCalculator:
         lines.append(f"  Lines removed: -{snapshot.total_lines_removed}")
 
         return "\n".join(lines)
+
+    def _read_records(self) -> list[dict]:
+        """Read all records from analytics.jsonl storage.
+
+        Returns:
+            List of analytics records (dicts).
+        """
+        return self.storage.read_all()
+
+    def export_csv(self, output_path: Path | None = None) -> Path:
+        """Export all analytics records to CSV.
+
+        Args:
+            output_path: Custom output path or None to auto-generate in .flowtui/exports/
+
+        Returns:
+            Path to written file.
+        """
+        if output_path is None:
+            ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            exports_dir = self.project_root / ".flowtui" / "exports"
+            exports_dir.mkdir(parents=True, exist_ok=True)
+            output_path = exports_dir / f"stats_{ts}.csv"
+
+        records = self._read_records()
+        if not records:
+            # Write header-only CSV
+            with open(output_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=["timestamp", "tool", "action", "duration_sec"])
+                writer.writeheader()
+            return output_path
+
+        # Collect all field names (union of all record keys)
+        all_keys = []
+        seen = set()
+        for r in records:
+            for k in r.keys():
+                if k not in seen:
+                    all_keys.append(k)
+                    seen.add(k)
+
+        with open(output_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=all_keys, extrasaction="ignore")
+            writer.writeheader()
+            for record in records:
+                # Fill missing keys with empty string
+                row = {k: record.get(k, "") for k in all_keys}
+                writer.writerow(row)
+
+        return output_path
+
+    def export_json(self, output_path: Path | None = None) -> Path:
+        """Export analytics records + snapshot summary to JSON.
+
+        Args:
+            output_path: Custom output path or None to auto-generate in .flowtui/exports/
+
+        Returns:
+            Path to written file.
+        """
+        if output_path is None:
+            ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            exports_dir = self.project_root / ".flowtui" / "exports"
+            exports_dir.mkdir(parents=True, exist_ok=True)
+            output_path = exports_dir / f"stats_{ts}.json"
+
+        records = self._read_records()
+        snap = self.snapshot()
+
+        export_data = {
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "summary": {
+                "today_calls": snap.today_calls,
+                "week_calls": snap.week_calls,
+                "avg_task_duration_sec": snap.avg_task_duration_sec,
+                "retry_rate": snap.retry_rate,
+                "total_tasks_done": snap.total_tasks_done,
+                "total_tasks_blocked": snap.total_tasks_blocked,
+                "total_files_changed": snap.total_files_changed,
+                "total_lines_added": snap.total_lines_added,
+                "total_lines_removed": snap.total_lines_removed,
+            },
+            "records": records,
+        }
+
+        tmp_path = output_path.with_suffix(".json.tmp")
+        try:
+            tmp_path.write_text(
+                json_module.dumps(export_data, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            tmp_path.rename(output_path)
+        except Exception as e:
+            tmp_path.unlink(missing_ok=True)
+            raise RuntimeError(f"Failed to write export: {e}") from e
+        return output_path
